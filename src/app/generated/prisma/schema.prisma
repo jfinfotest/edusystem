@@ -1,0 +1,85 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/app/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// Modelo para Evaluación
+model Evaluation {
+  id          Int        @id @default(autoincrement())
+  title       String
+  description String?
+  helpUrl     String? // URL de ayuda o recursos adicionales
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  questions   Question[] @relation("EvaluationQuestions")
+  attempts    Attempt[]  @relation("EvaluationAttempts")
+}
+
+// Modelo para Pregunta
+model Question {
+  id           Int        @id @default(autoincrement())
+  evaluationId Int
+  evaluation   Evaluation @relation("EvaluationQuestions", fields: [evaluationId], references: [id], onDelete: Cascade)
+  text         String     @db.Text // Contenido del editor markdown
+  type         String //"Code", "Text".
+  language     String? // Lenguaje de programación para preguntas de tipo CODE
+  answer       String?    @db.Text // Respuesta 
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  answers      Answer[]   @relation("QuestionAnswers")
+}
+
+// Modelo para Intento (Attempt)
+model Attempt {
+  id             Int          @id @default(autoincrement())
+  evaluationId   Int
+  evaluation     Evaluation   @relation("EvaluationAttempts", fields: [evaluationId], references: [id], onDelete: Cascade)
+  uniqueCode     String       @unique @db.VarChar(8) // Código de 8 caracteres
+  startTime      DateTime
+  endTime        DateTime
+  maxSubmissions Int? // Máximo número de presentaciones permitidas
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  submissions    Submission[] @relation("AttemptSubmissions")
+}
+
+// Modelo para Presentación (Submission)
+model Submission {
+  id              Int       @id @default(autoincrement())
+  attemptId       Int
+  attempt         Attempt   @relation("AttemptSubmissions", fields: [attemptId], references: [id], onDelete: Cascade)
+  firstName       String // Nombre del estudiante
+  lastName        String // Apellido del estudiante
+  email           String // Correo electrónico del estudiante
+  score           Float? // Calificación (añadido previamente)
+  fraudAttempts   Int       @default(0) // Contador de intentos de fraude
+  timeOutsideEval Int       @default(0) // Tiempo acumulado (en segundos) que el estudiante permanece fuera de la evaluación
+  submittedAt     DateTime? // Fecha y hora de envío
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  answersList     Answer[]  @relation("SubmissionAnswers")
+}
+
+// Modelo para Respuesta (Answer)
+model Answer {
+  id           Int        @id @default(autoincrement())
+  submissionId Int
+  submission   Submission @relation("SubmissionAnswers", fields: [submissionId], references: [id], onDelete: Cascade)
+  questionId   Int
+  question     Question   @relation("QuestionAnswers", fields: [questionId], references: [id], onDelete: Cascade)
+  answer       String     @db.Text // Respuesta del estudiante
+  score        Float? // Puntuación específica de esta respuesta (opcional)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
