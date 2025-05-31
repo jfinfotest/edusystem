@@ -1,4 +1,5 @@
 import { format, toZonedTime } from 'date-fns-tz';
+import { parseISO } from 'date-fns';
 
 /**
  * Constante que define la zona horaria predeterminada para la aplicación.
@@ -8,24 +9,28 @@ export const DEFAULT_TIMEZONE = 'UTC';
 
 /**
  * Formatea una fecha según la zona horaria especificada.
- * @param date - La fecha a formatear
+ * @param date - La fecha a formatear (Date o string ISO)
  * @param formatStr - El formato de fecha a utilizar (por defecto: 'yyyy-MM-dd HH:mm:ss')
  * @param timeZone - La zona horaria a utilizar (por defecto: DEFAULT_TIMEZONE)
  * @returns La fecha formateada como string
  */
-export const formatDate = (date: Date, formatStr = 'yyyy-MM-dd HH:mm:ss', timeZone = DEFAULT_TIMEZONE) => {
-  const zonedDate = toZonedTime(date, timeZone);
+export const formatDate = (date: Date | string, formatStr = 'yyyy-MM-dd HH:mm:ss', timeZone = DEFAULT_TIMEZONE) => {
+  // Asegurarse de que date sea un objeto Date
+  const dateObj = typeof date === 'string' ? parseISO(date) : date;
+  const zonedDate = toZonedTime(dateObj, timeZone);
   return format(zonedDate, formatStr, { timeZone });
 };
 
 /**
  * Convierte una fecha UTC a la zona horaria especificada.
- * @param date - La fecha UTC a convertir
+ * @param date - La fecha UTC a convertir (Date o string ISO)
  * @param timeZone - La zona horaria a utilizar (por defecto: DEFAULT_TIMEZONE)
  * @returns La fecha convertida a la zona horaria especificada
  */
-export const convertToTimeZone = (date: Date, timeZone = DEFAULT_TIMEZONE) => {
-  return toZonedTime(date, timeZone);
+export const convertToTimeZone = (date: Date | string, timeZone = DEFAULT_TIMEZONE) => {
+  // Asegurarse de que date sea un objeto Date
+  const dateObj = typeof date === 'string' ? parseISO(date) : date;
+  return toZonedTime(dateObj, timeZone);
 };
 
 /**
@@ -38,17 +43,19 @@ export const getCurrentUTCDate = () => {
 
 /**
  * Convierte una fecha local a UTC.
- * @param date - La fecha local a convertir
+ * @param date - La fecha local a convertir (Date o string ISO)
  * @returns La fecha convertida a UTC
  */
-export const convertToUTC = (date: Date) => {
+export const convertToUTC = (date: Date | string) => {
+  // Asegurarse de que date sea un objeto Date
+  const dateObj = typeof date === 'string' ? parseISO(date) : date;
   return new Date(Date.UTC(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate(),
-    date.getHours(),
-    date.getMinutes(),
-    date.getSeconds(),
-    date.getMilliseconds()
+    dateObj.getFullYear(),
+    dateObj.getMonth(),
+    dateObj.getDate(),
+    dateObj.getHours(),
+    dateObj.getMinutes(),
+    dateObj.getSeconds(),
+    dateObj.getMilliseconds()
   ));
 };
