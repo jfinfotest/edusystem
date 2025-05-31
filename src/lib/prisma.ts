@@ -4,7 +4,7 @@ const globalForPrisma = global as unknown as {
     prisma: PrismaClient
 }
 
-// Configuración para asegurar que las fechas se manejen correctamente en diferentes zonas horarias
+// Configuración para asegurar que las fechas se manejen correctamente en UTC para Vercel
 export const prisma = globalForPrisma.prisma || new PrismaClient({
   log: ['query', 'info', 'warn', 'error'],
   datasources: {

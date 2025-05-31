@@ -2,6 +2,17 @@
   "regions": ["iad1"],
   "buildCommand": "npm run build",
   "env": {
-    "TZ": "America/Bogota"
+    "TZ": "UTC"
+  },
+  "build": {
+    "env": {
+      "TZ": "UTC"
+    }
+  },
+  "functions": {
+    "api/*.js": {
+      "memory": 1024,
+      "maxDuration": 10
+    }
   }
 }

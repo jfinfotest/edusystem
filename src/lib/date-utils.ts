@@ -2,9 +2,9 @@ import { format, toZonedTime } from 'date-fns-tz';
 
 /**
  * Constante que define la zona horaria predeterminada para la aplicación.
- * Utiliza 'America/Bogota' como zona horaria para Colombia.
+ * Utiliza 'UTC' como zona horaria para compatibilidad con Vercel.
  */
-export const DEFAULT_TIMEZONE = 'America/Bogota';
+export const DEFAULT_TIMEZONE = 'UTC';
 
 /**
  * Formatea una fecha según la zona horaria especificada.
@@ -26,4 +26,29 @@ export const formatDate = (date: Date, formatStr = 'yyyy-MM-dd HH:mm:ss', timeZo
  */
 export const convertToTimeZone = (date: Date, timeZone = DEFAULT_TIMEZONE) => {
   return toZonedTime(date, timeZone);
+};
+
+/**
+ * Obtiene la fecha actual en UTC.
+ * @returns La fecha actual en UTC
+ */
+export const getCurrentUTCDate = () => {
+  return new Date();
+};
+
+/**
+ * Convierte una fecha local a UTC.
+ * @param date - La fecha local a convertir
+ * @returns La fecha convertida a UTC
+ */
+export const convertToUTC = (date: Date) => {
+  return new Date(Date.UTC(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    date.getHours(),
+    date.getMinutes(),
+    date.getSeconds(),
+    date.getMilliseconds()
+  ));
 };
