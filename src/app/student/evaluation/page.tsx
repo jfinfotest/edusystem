@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
-import { AlertCircle, AlertTriangle, BarChart, CheckCircle, ChevronLeft, ChevronRight, Clock, HelpCircle, Loader2, Send, Sparkles, X } from 'lucide-react'
+import { AlertCircle, AlertTriangle, BarChart, CheckCircle, ChevronLeft, ChevronRight, Clock, HelpCircle, Loader2, Send, Sparkles, X, XCircle } from 'lucide-react'
 import { ModalIframe } from '@/components/ui/modal-iframe'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -163,7 +163,7 @@ function EvaluationContent() {
   const [timeRemaining, setTimeRemaining] = useState<number>(0)
   const [evaluating, setEvaluating] = useState(false)
   const [evaluationResult, setEvaluationResult] = useState<{ success: boolean; message: string; details?: string; grade?: number } | null>(null)
-  const [showAlert, setShowAlert] = useState<boolean>(true)
+  const [isResultModalOpen, setIsResultModalOpen] = useState<boolean>(false)
   const [buttonCooldown, setButtonCooldown] = useState<number>(0)
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false)
   // Estado para controlar el modal de confirmación de envío
@@ -454,39 +454,49 @@ function EvaluationContent() {
   useEffect(() => {
     if (!submissionId) return;
 
-    const handleVisibilityChange = async () => {
+    // Función para registrar un intento de fraude
+    const registerFraudAttempt = async (reason: string) => {
       // Use refs to access current state values
       const currentAnswers = answersRef.current;
       const currentIndex = currentQuestionIndexRef.current;
       const currentAnswer = currentAnswers[currentIndex];
 
-      if (document.hidden) {
-        const newLeaveTime = Date.now();
-        setLeaveTime(newLeaveTime);
+      const newLeaveTime = Date.now();
+      setLeaveTime(newLeaveTime);
 
-        setFraudAttempts(prevFraudAttempts => {
-          const nextFraudValue = prevFraudAttempts + 1;
-          if (currentAnswer && submissionId) {
-            import('./actions').then(({ saveAnswer }) => {
-              saveAnswer(
-                submissionId,
-                currentAnswer.questionId,
-                currentAnswer.answer,
-                currentAnswer.score ?? undefined,
-                nextFraudValue,
-                timeOutsideEvalRef.current
-              ).catch(error => console.error('Error al guardar intento de fraude:', error));
-            });
-          }
-          return nextFraudValue;
-        });
+      console.log(`Intento de fraude detectado: ${reason}`);
 
-      } else if (leaveTimeRef.current !== null) {
+      setFraudAttempts(prevFraudAttempts => {
+        const nextFraudValue = prevFraudAttempts + 1;
+        if (currentAnswer && submissionId) {
+          import('./actions').then(({ saveAnswer }) => {
+            saveAnswer(
+              submissionId,
+              currentAnswer.questionId,
+              currentAnswer.answer,
+              currentAnswer.score ?? undefined,
+              nextFraudValue,
+              timeOutsideEvalRef.current
+            ).catch(error => console.error('Error al guardar intento de fraude:', error));
+          });
+        }
+        return nextFraudValue;
+      });
+    };
+
+    // Esta función se eliminará ya que está duplicada más abajo
+
+    // Función para registrar el regreso del usuario
+    const registerUserReturn = async () => {
+      if (leaveTimeRef.current !== null) {
         const timeAway = Math.floor((Date.now() - leaveTimeRef.current) / 1000);
         setLeaveTime(null);
 
         setTimeOutsideEval(prevTimeOutsideEval => {
           const nextTimeOutsideEval = prevTimeOutsideEval + timeAway;
+          const currentAnswers = answersRef.current;
+          const currentIndex = currentQuestionIndexRef.current;
+          const currentAnswer = currentAnswers[currentIndex];
 
           if (currentAnswer && submissionId) {
             import('./actions').then(({ saveAnswer }) => {
@@ -505,10 +515,167 @@ function EvaluationContent() {
       }
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    // 1. Detector de cambio de visibilidad (pestaña)
+    const handleVisibilityChange = async () => {
+      if (document.hidden) {
+        registerFraudAttempt('cambio de pestaña');
+      } else {
+        registerUserReturn();
+      }
+    };
 
+    // 2. Detector de pérdida de foco de la ventana
+    const handleWindowBlur = async () => {
+      registerFraudAttempt('pérdida de foco de ventana');
+    };
+
+    // 3. Detector de recuperación de foco
+    const handleWindowFocus = async () => {
+      registerUserReturn();
+    };
+
+    // 4. Detector de salida del mouse de la ventana
+    // const handleMouseLeave = async (e: MouseEvent) => {
+    //   // Solo registrar si el mouse sale completamente de la ventana
+    //   if (e.clientY <= 0 || e.clientX <= 0 || 
+    //       e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
+    //     registerFraudAttempt('cursor fuera de la ventana');
+    //   }
+    // };
+
+    // 5. Detector de cambios en localStorage (posible comunicación entre pestañas)
+    const handleStorageChange = async () => {
+      registerFraudAttempt('cambio en almacenamiento local');
+    };
+
+    // 6. Detector de teclas sospechosas (Alt+Tab, Windows, etc.)
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      // Detectar combinaciones de teclas sospechosas
+      if ((e.altKey && e.key === 'Tab') || // Alt+Tab
+          e.key === 'Meta' || // Tecla Windows/Command
+          (e.ctrlKey && e.key === 'Escape') || // Ctrl+Esc (Menú inicio en Windows)
+          (e.altKey && e.key === 'F4') || // Alt+F4
+          (e.ctrlKey && e.key === 'w') || // Ctrl+W (cerrar pestaña)
+          (e.ctrlKey && e.key === 't') || // Ctrl+T (nueva pestaña)
+          (e.ctrlKey && e.key === 'n')) { // Ctrl+N (nueva ventana)
+        registerFraudAttempt(`uso de tecla sospechosa: ${e.key}`);
+        e.preventDefault();
+        return false;
+      }
+    };
+
+    // 7. Detector de cambio de tamaño de ventana (posible minimización)
+    const handleResize = async () => {
+      // Si la ventana se hace muy pequeña, podría ser minimizada
+      if (window.outerHeight < window.innerHeight || 
+          window.outerWidth < window.innerWidth) {
+        registerFraudAttempt('cambio de tamaño de ventana');
+      }
+    };
+
+    // 8. Detector de pantalla completa
+    const handleFullscreenChange = async () => {
+      if (!document.fullscreenElement) {
+        registerFraudAttempt('salida de pantalla completa');
+      }
+    };
+
+    // 9. Detector de copiar/pegar (prevenir copiar respuestas o pegar soluciones)
+    const handleCopy = async (e: ClipboardEvent) => {
+      registerFraudAttempt('intento de copiar contenido');
+      e.preventDefault();
+      return false;
+    };
+
+    const handlePaste = async (e: ClipboardEvent) => {
+      registerFraudAttempt('intento de pegar contenido');
+      e.preventDefault();
+      return false;
+    };
+
+    // 10. Detector de captura de pantalla (no funciona en todos los navegadores)
+    const handleScreenCapture = async () => {
+      registerFraudAttempt('posible captura de pantalla');
+    };
+
+    // 11. Detector de contexto de menú (clic derecho)
+    const handleContextMenu = async (e: MouseEvent) => {
+      registerFraudAttempt('uso de menú contextual');
+      e.preventDefault();
+      return false;
+    };
+
+    // 12. Detector de selección de texto
+    const handleSelectStart = async () => {
+      // No bloqueamos la selección pero la registramos
+      registerFraudAttempt('selección de texto');
+    };
+
+    // 13. Detector de arrastrar y soltar
+    const handleDragStart = async (e: DragEvent) => {
+      registerFraudAttempt('intento de arrastrar contenido');
+      e.preventDefault();
+      return false;
+    };
+
+    // 14. Detector de impresión
+    const handleBeforePrint = async () => {
+      registerFraudAttempt('intento de imprimir');
+    };
+
+    // 15. Detector de compartir (Web Share API)
+    const handleShare = async () => {
+      registerFraudAttempt('intento de compartir contenido');
+    };
+
+    // Registrar todos los event listeners
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('focus', handleWindowFocus);
+    // document.addEventListener('mouseleave', handleMouseLeave);
+    window.addEventListener('storage', handleStorageChange);
+    document.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('resize', handleResize);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('copy', handleCopy);
+    document.addEventListener('paste', handlePaste);
+    document.addEventListener('contextmenu', handleContextMenu);
+    document.addEventListener('selectstart', handleSelectStart);
+    document.addEventListener('dragstart', handleDragStart);
+    window.addEventListener('beforeprint', handleBeforePrint);
+    navigator.mediaDevices?.addEventListener('devicechange', handleScreenCapture);
+    
+    // Interceptar la API de compartir si está disponible
+    const originalShare = navigator.share;
+    if (navigator.share) {
+      navigator.share = async (data) => {
+        handleShare();
+        return Promise.reject(new Error('Compartir no está permitido durante la evaluación'));
+      };
+    }
+
+    // Limpiar todos los event listeners
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('focus', handleWindowFocus);
+      // document.removeEventListener('mouseleave', handleMouseLeave);
+      window.removeEventListener('storage', handleStorageChange);
+      document.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('resize', handleResize);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('copy', handleCopy);
+      document.removeEventListener('paste', handlePaste);
+      document.removeEventListener('contextmenu', handleContextMenu);
+      document.removeEventListener('selectstart', handleSelectStart);
+      document.removeEventListener('dragstart', handleDragStart);
+      window.removeEventListener('beforeprint', handleBeforePrint);
+      navigator.mediaDevices?.removeEventListener('devicechange', handleScreenCapture);
+      
+      // Restaurar la API de compartir si fue modificada
+      if (navigator.share && originalShare) {
+        navigator.share = originalShare;
+      }
     };
   }, [submissionId, setLeaveTime, setFraudAttempts, setTimeOutsideEval]);
 
@@ -598,7 +765,7 @@ function EvaluationContent() {
     }
 
     setEvaluating(true)
-    setShowAlert(true) // Aseguramos que la alerta sea visible para la nueva evaluación
+    // Ya no necesitamos setShowAlert porque ahora usamos un modal
 
     try {
       if (currentQuestion.type === 'CODE') {
@@ -631,12 +798,14 @@ function EvaluationContent() {
         }
 
         // Mostrar resultado de la evaluación
-        setEvaluationResult({
+        const newResult = {
           success: result.isCorrect,
           message: currentAnswer.evaluated ? 'Respuesta reevaluada' : (result.isCorrect ? '¡Respuesta correcta!' : 'La respuesta necesita mejoras'),
           details: result.feedback,
           grade: result.grade
-        })
+        };
+        setEvaluationResult(newResult);
+        setIsResultModalOpen(true);
       } else {
         // Para preguntas de texto, evaluamos con IA usando la función específica para texto
         const result = await evaluateStudentText(
@@ -664,12 +833,14 @@ function EvaluationContent() {
           // No mostramos error al usuario para no interrumpir su experiencia
         }
 
-        setEvaluationResult({
+        const newResult = {
           success: result.isCorrect,
           message: currentAnswer.evaluated ? 'Respuesta reevaluada' : (result.isCorrect ? '¡Respuesta aceptable!' : 'La respuesta necesita mejoras'),
           details: result.feedback,
           grade: result.grade
-        })
+        };
+        setEvaluationResult(newResult);
+        setIsResultModalOpen(true);
       }
 
       // Iniciar el temporizador de enfriamiento (10 segundos)
@@ -868,38 +1039,38 @@ function EvaluationContent() {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-background overflow-hidden">
+    <div className="flex flex-col h-screen w-screen bg-background overflow-auto">
       {/* Barra superior con información y controles */}
-      <div className="flex justify-between items-center p-3 bg-card shadow-md flex-shrink-0 border-b">
-        <div className="flex items-center gap-2">
-          <div>
-            <h1 className="text-xl font-bold">{evaluation.title}</h1>
-            <p className="text-xs text-muted-foreground">{firstName} {lastName}</p>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-3 bg-card shadow-md flex-shrink-0 border-b gap-2">
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <div className="overflow-hidden">
+            <h1 className="text-lg md:text-xl font-bold truncate">{evaluation.title}</h1>
+            <p className="text-xs text-muted-foreground truncate">{firstName} {lastName}</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap md:flex-nowrap items-center gap-2 w-full md:w-auto">
           {/* Contenedor principal para elementos informativos con altura uniforme */}
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap md:flex-nowrap items-center gap-2 w-full md:w-auto">
             {/* Nota calculada */}
             {answers.some(a => a.evaluated) && (
-              <div className="flex items-center gap-1 h-9 bg-primary/10 px-3 rounded-md">
-                <Sparkles className="h-4 w-4 text-primary" />
-                <span className="font-semibold text-sm">
+              <div className="flex items-center gap-1 h-9 bg-primary/10 px-3 rounded-md flex-grow md:flex-grow-0">
+                <Sparkles className="h-4 w-4 text-primary flex-shrink-0" />
+                <span className="font-semibold text-sm truncate">
                   Nota: {(answers.reduce((sum, a) => sum + (a.score || 0), 0) / evaluation.questions.length).toFixed(1)}/5.0
                 </span>
               </div>
             )}
 
             {/* Indicador de progreso */}
-            <div className="flex items-center gap-1 h-9 bg-primary/10 px-3 rounded-md">
-              <BarChart className="h-4 w-4 text-primary" />
+            <div className="flex items-center gap-1 h-9 bg-primary/10 px-3 rounded-md flex-grow md:flex-grow-0">
+              <BarChart className="h-4 w-4 text-primary flex-shrink-0" />
               <div className="flex flex-col w-full">
                 <div className="flex justify-between items-center mb-1">
                   <span className="text-xs font-medium">Progreso</span>
                   <span className="text-xs font-semibold">{calculateProgress()}%</span>
                 </div>
-                <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden dark:bg-gray-700">
+                <div className="w-full md:w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden dark:bg-gray-700">
                   <div
                     className="h-full bg-primary rounded-full transition-all duration-300 ease-in-out"
                     style={{ width: `${calculateProgress()}%` }}
@@ -909,14 +1080,14 @@ function EvaluationContent() {
             </div>
 
             {/* Temporizador - Con la misma altura que los otros elementos */}
-            <div className="flex items-center h-9 gap-1 bg-primary/10 px-3 rounded-md">
-              <Clock className="h-4 w-4 text-primary" />
+            <div className="flex items-center h-9 gap-1 bg-primary/10 px-3 rounded-md flex-grow md:flex-grow-0">
+              <Clock className="h-4 w-4 text-primary flex-shrink-0" />
               <div className="flex flex-col w-full">
                 <div className="flex justify-between items-center mb-1">
                   <span className="text-xs font-medium">Tiempo</span>
                   <span className="text-xs font-semibold">{formatTimeRemaining()}</span>
                 </div>
-                <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden dark:bg-gray-700">
+                <div className="w-full md:w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden dark:bg-gray-700">
                   <div
                     className="h-full bg-primary rounded-full transition-all duration-300 ease-in-out"
                     style={{ width: `${timeRemaining ? (timeRemaining / (new Date(evaluation.endTime).getTime() - new Date(evaluation.startTime).getTime())) * 100 : 0}%` }}
@@ -927,35 +1098,35 @@ function EvaluationContent() {
 
             {/* Alerta de intentos de fraude y tiempo fuera */}
             {(fraudAttempts > 0 || timeOutsideEval > 0) && (
-              <div className="flex items-center h-9 bg-red-700 px-3 rounded-md">
-                <AlertTriangle className="h-4 w-4 mr-1 text-white" />
-                <span className="text-white text-sm font-medium">
-                  {fraudAttempts > 0 && `Intentos de fraude: ${fraudAttempts}`}
+              <div className="flex items-center h-9 gap-1 bg-red-700 px-3 rounded-md flex-grow md:flex-grow-0">
+                <AlertTriangle className="h-4 w-4 text-white flex-shrink-0" />
+                <span className="text-white text-xs sm:text-sm font-medium truncate">
+                  {fraudAttempts > 0 && `Intentos: ${fraudAttempts}`}
                   {fraudAttempts > 0 && timeOutsideEval > 0 && " | "}
-                  {timeOutsideEval > 0 && `Tiempo fuera: ${Math.floor(timeOutsideEval / 60)}m ${timeOutsideEval % 60}s`}
+                  {timeOutsideEval > 0 && `Fuera: ${Math.floor(timeOutsideEval / 60)}m ${timeOutsideEval % 60}s`}
                 </span>
               </div>
             )}
           </div>
 
-          {/* Separador vertical */}
-          <div className="h-9 border-l mx-1"></div>
+          {/* Separador vertical en escritorio, horizontal en móvil */}
+          <div className="hidden md:block h-9 border-l mx-1"></div>
+          <div className="block md:hidden w-full border-t my-1"></div>
 
           {/* Contenedor para botones con altura uniforme */}
-          <div className="flex items-center space-x-2">
-            {/* Botón de pantalla completa eliminado */}
-
+          <div className="flex items-center gap-2 w-full md:w-auto justify-between md:justify-end">
             {/* Botón de ayuda para la evaluación general */}
             <Button
               size="sm"
               variant="default"
               onClick={handleOpenHelpModal}
-              className="gap-1 h-9"
+              className="gap-1 h-9 flex-grow md:flex-grow-0"
               title="Ver recursos de ayuda"
               disabled={!evaluation?.helpUrl}
             >
               <HelpCircle className="h-4 w-4" />
-              <span className="hidden sm:inline">Ayuda</span>
+              <span className="inline sm:hidden md:hidden lg:inline">Ayuda</span>
+              <span className="hidden sm:inline md:inline lg:hidden">Ayuda</span>
             </Button>
 
             {/* Botón de ayuda para la pregunta específica */}
@@ -964,11 +1135,13 @@ function EvaluationContent() {
                 size="sm"
                 variant="outline"
                 onClick={() => setIsHelpModalOpen(true)}
-                className="gap-1 h-9"
+                className="gap-1 h-9 flex-grow md:flex-grow-0"
                 title="Ver recursos de ayuda para esta pregunta"
               >
                 <HelpCircle className="h-4 w-4" />
-                <span className="hidden sm:inline">Ayuda Pregunta</span>
+                <span className="inline sm:hidden md:hidden lg:inline">Ayuda P.</span>
+                <span className="hidden sm:inline md:hidden lg:hidden">Ayuda Pregunta</span>
+                <span className="hidden md:inline lg:hidden">Ayuda P.</span>
               </Button>
             ) : null}
 
@@ -977,102 +1150,45 @@ function EvaluationContent() {
               size="sm"
               onClick={openSubmitDialog}
               disabled={loading}
-              className="gap-1 h-9"
+              className="gap-1 h-9 flex-grow md:flex-grow-0"
             >
               <Send className="h-4 w-4" />
-              {loading ? 'Enviando...' : 'Enviar'}
+              <span className="inline sm:hidden md:hidden lg:inline">{loading ? 'Enviando...' : 'Enviar'}</span>
+              <span className="hidden sm:inline md:inline lg:hidden">{loading ? '...' : 'Enviar'}</span>
             </Button>
 
-            <ThemeToggle />
+            <ThemeToggle className="flex-shrink-0" />
           </div>
         </div>
       </div>
 
-      {/* Resultado de la evaluación - Ahora aparece antes del contenido principal */}
-      {evaluationResult && showAlert && (
-        <div className="px-4 py-3 flex-shrink-0">
-          {alertStyling ? (
-            <div className={alertStyling.alertClass}>
-              <div className="flex items-center justify-between w-full">
-                <div className="flex items-center">
-                  {alertStyling.iconComponent}
-                  <div>
-                    <div className={alertStyling.titleClass}>
-                      {evaluationResult.message}
-                      {evaluationResult.grade !== undefined && (
-                        <span className="ml-2 px-2 py-0.5 bg-white/20 rounded-full text-sm">
-                          {evaluationResult.grade.toFixed(1)}/5.0
-                        </span>
-                      )}
-                    </div>
-                    {evaluationResult.details && (
-                      <div className={alertStyling.descriptionClass}>
-                        {evaluationResult.details}
-                      </div>
-                    )}
-                  </div>
-                </div>
+      {/* El resultado de la evaluación ahora se muestra en un modal */}
 
-                <button
-                  onClick={() => setShowAlert(false)}
-                  className="text-white opacity-70 hover:opacity-100 transition-opacity"
-                  aria-label="Cerrar alerta"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-          ) : (
-            <Alert variant="default" className="relative border shadow-md bg-card">
-              <div className="flex justify-between items-start w-full">
-                <div className="flex items-center gap-2">
-                  {evaluationResult.success ?
-                    <CheckCircle className="h-5 w-5 text-green-500" /> :
-                    <AlertCircle className="h-5 w-5 text-amber-500" />
-                  }
-                  <div>
-                    <AlertTitle className="text-base font-medium">{evaluationResult.message}</AlertTitle>
-                    {evaluationResult.details && (
-                      <AlertDescription className="text-sm mt-1 whitespace-pre-wrap">{evaluationResult.details}</AlertDescription>
-                    )}
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowAlert(false)}
-                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 transition-colors ml-2 flex-shrink-0"
-                  aria-label="Cerrar alerta"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-            </Alert>
-          )}
-        </div>
-      )}
-
-      {/* Contenido principal - Usa flex-grow para ocupar todo el espacio disponible */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 p-2 flex-grow overflow-hidden">
+      {/* Contenido principal - Diseño tipo landing page en móviles */}
+      <div className="flex flex-col lg:grid lg:grid-cols-2 gap-4 p-3 sm:p-4 flex-grow" style={{ minHeight: 'auto' }}>
         {/* Columna izquierda: Visualizador de Markdown */}
-        <Card className="flex flex-col overflow-hidden">
-          <CardHeader className="py-0 px-4 flex-shrink-0 mb-2">
-            <CardTitle className="flex justify-between items-center text-base">
+        <Card className="flex flex-col overflow-hidden mb-2 lg:mb-0">
+          <CardHeader className="py-0 px-2 sm:px-4 flex-shrink-0 mb-1 sm:mb-2">
+            <CardTitle className="flex justify-between items-center text-sm sm:text-base">
               <span>Pregunta {currentQuestionIndex + 1}</span>
               <span className={`px-2 py-1 text-xs rounded-full ${currentQuestion.type === 'CODE' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'}`}>
                 {currentQuestion.type === 'CODE' ? 'Código' : 'Texto'}
               </span>
             </CardTitle>
           </CardHeader>
-          <CardContent className="flex-grow overflow-auto p-2 min-h-0">
+          <CardContent className="flex-grow overflow-auto p-3 sm:p-4 min-h-[300px] sm:min-h-[400px] h-auto">
             <div data-color-mode={theme === 'dark' ? 'dark' : 'light'} className="h-full rounded-lg">
               <MDPreview
                 source={currentQuestion.text}
                 style={{
-                  padding: '0.5rem',
+                  padding: window.innerWidth < 640 ? '1rem' : '0.75rem',
                   height: '100%',
-                  borderRadius: '0.5rem',
+                  borderRadius: '0.75rem',
                   color: 'var(--foreground)',
                   backgroundColor: theme === 'dark' ? 'var(--secondary)' : 'var(--background)',
-                  overflowY: 'auto'
+                  overflowY: 'auto',
+                  fontSize: window.innerWidth < 640 ? '1.1rem' : '1rem',
+                  lineHeight: '1.6'
                 }}
               />
             </div>
@@ -1081,12 +1197,12 @@ function EvaluationContent() {
 
         {/* Columna derecha: Editor de respuesta */}
         <Card className="flex flex-col overflow-hidden">
-          <CardHeader className="py-0 px-4 flex-shrink-0">
-            <CardTitle className="flex justify-between items-center text-base">
+          <CardHeader className="py-0 px-2 sm:px-4 flex-shrink-0">
+            <CardTitle className="flex flex-wrap sm:flex-nowrap justify-between items-center text-sm sm:text-base gap-1 sm:gap-0">
               <span>Tu Respuesta</span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto justify-end">
                 {currentQuestion.type === 'CODE' && (
-                  <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200">
+                  <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 truncate max-w-[100px] sm:max-w-none">
                     {LANGUAGE_OPTIONS.find(opt => opt.value === language)?.label || language}
                   </span>
                 )}
@@ -1095,36 +1211,40 @@ function EvaluationContent() {
                   variant="default"
                   onClick={evaluateCurrentAnswer}
                   disabled={evaluating || !currentAnswer.answer.trim()}
-                  className="h-9 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-medium shadow-md hover:shadow-lg transition-all duration-200 animate-pulse hover:animate-none"
+                  className="h-10 sm:h-8 text-sm sm:text-base bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-medium shadow-md hover:shadow-lg px-4"
                 >
                   {evaluating ? (
                     <span className="flex items-center gap-1">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Evaluando...
+                      <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
+                      <span className="hidden xs:inline">Evaluando...</span>
+                      <span className="xs:hidden">...</span>
                     </span>
                   ) : buttonCooldown > 0 ? (
                     <span className="flex items-center gap-1">
-                      <Clock className="h-4 w-4" />
-                      {currentAnswer.evaluated ? "Reevaluar" : "Evaluar"} ({buttonCooldown}s)
+                      <Clock className="h-4 w-4 sm:h-5 sm:w-5" />
+                      <span className="hidden xs:inline">{currentAnswer.evaluated ? "Reevaluar" : "Evaluar"} ({buttonCooldown}s)</span>
+                      <span className="xs:hidden">({buttonCooldown}s)</span>
                     </span>
                   ) : currentAnswer.evaluated ? (
                     <span className="flex items-center gap-1">
-                      <Sparkles className="h-4 w-4" />
-                      Reevaluar con IA
+                      <Sparkles className="h-4 w-4 sm:h-5 sm:w-5" />
+                      <span className="hidden xs:inline">Reevaluar con IA</span>
+                      <span className="xs:hidden">Reevaluar</span>
                     </span>
                   ) : (
                     <span className="flex items-center gap-1">
-                      <Sparkles className="h-4 w-4" />
-                      Evaluar con IA
+                      <Sparkles className="h-4 w-4 sm:h-5 sm:w-5" />
+                      <span className="hidden xs:inline">Evaluar con IA</span>
+                      <span className="xs:hidden">Evaluar</span>
                     </span>
                   )}
                 </Button>
               </div>
             </CardTitle>
           </CardHeader>
-          <CardContent className="flex-grow overflow-hidden p-2 min-h-0">
+          <CardContent className="flex-grow overflow-auto p-3 sm:p-4 min-h-[300px] sm:min-h-[400px] h-auto">
             {currentQuestion.type === 'CODE' ? (
-              <div className="h-full">
+              <div className="h-full" style={{ minHeight: window.innerWidth < 640 ? '400px' : '350px' }}>
                 <MonacoEditor
                   height="100%"
                   language={language}
@@ -1133,12 +1253,23 @@ function EvaluationContent() {
                   options={{
                     minimap: { enabled: false },
                     scrollBeyondLastLine: false,
-                    fontSize: 16,
+                    fontSize: window.innerWidth < 640 ? 14 : 16,
                     wordWrap: 'on',
                     mouseWheelZoom: true,
                     roundedSelection: true,
                     readOnly: false,
-                    contextmenu: true
+                    contextmenu: true,
+                    lineNumbers: window.innerWidth < 640 ? 'off' : 'on',
+                    folding: window.innerWidth < 640 ? false : true,
+                    padding: { top: 12, bottom: 12 },
+                    scrollbar: {
+                      vertical: 'visible',
+                      horizontal: 'visible',
+                      verticalScrollbarSize: window.innerWidth < 640 ? 12 : 10,
+                      horizontalScrollbarSize: window.innerWidth < 640 ? 12 : 10,
+                      alwaysConsumeMouseWheel: false
+                    },
+                    fixedOverflowWidgets: true
                   }}
                   theme={theme === 'dark' ? monokaiThemeName : lightThemeName}
                   defaultValue=""
@@ -1154,6 +1285,33 @@ function EvaluationContent() {
                         return false;
                       }
                     });
+                    
+                    // Ajustar opciones del editor cuando cambia el tamaño de la ventana
+                    const updateEditorOptions = () => {
+                      const isMobile = window.innerWidth < 640;
+                      editor.updateOptions({
+                        fontSize: isMobile ? 14 : 16,
+                        lineNumbers: isMobile ? 'off' : 'on',
+                        folding: !isMobile,
+                        scrollbar: {
+                          vertical: 'visible',
+                          horizontal: 'visible',
+                          verticalScrollbarSize: isMobile ? 12 : 10,
+                          horizontalScrollbarSize: isMobile ? 12 : 10,
+                          alwaysConsumeMouseWheel: false
+                        },
+                        // Mejorar experiencia táctil en móviles
+                        glyphMargin: !isMobile,
+                        quickSuggestions: !isMobile,
+                        parameterHints: { enabled: !isMobile },
+                        // Aumentar el área de toque para selección de texto
+                        cursorSurroundingLines: isMobile ? 3 : 0,
+                        cursorWidth: isMobile ? 2 : 1
+                      });
+                    };
+                    
+                    window.addEventListener('resize', updateEditorOptions);
+                    return () => window.removeEventListener('resize', updateEditorOptions);
                   }}
                 />
               </div>
@@ -1162,13 +1320,16 @@ function EvaluationContent() {
                 placeholder="Escribe tu respuesta aquí..."
                 value={currentAnswer.answer}
                 onChange={(e) => handleAnswerChange(e.target.value)}
-                className="resize-none h-full rounded-lg bg-card text-card-foreground border border-border focus:ring-2 focus:ring-primary focus:border-primary"
+                className="resize-none h-full rounded-lg bg-card text-card-foreground border border-border focus:ring-2 focus:ring-primary focus:border-primary focus:border-primary overflow-y-auto"
                 style={{
                   width: '100%',
-                  overflowY: 'auto',
+                  height: '100%',
+                  minHeight: window.innerWidth < 640 ? '400px' : '350px',
                   display: 'block',
-                  borderRadius: '0.5rem',
-                  fontSize: '1.2rem',
+                  borderRadius: '0.75rem',
+                  fontSize: window.innerWidth < 640 ? '1.2rem' : '1.2rem',
+                  padding: window.innerWidth < 640 ? '16px' : '12px',
+                  lineHeight: '1.6',
                 }}
                 onCopy={(e) => e.preventDefault()}
                 onCut={(e) => e.preventDefault()}
@@ -1185,62 +1346,64 @@ function EvaluationContent() {
         </Card>
       </div>
 
-      {/* Footer con controles de paginación */}
-      <div className="flex justify-center items-center p-4 bg-card shadow-sm border-t border-border flex-shrink-0">
-        <div className="flex items-center gap-4">
-          {/* Botones de navegación */}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={goToPreviousQuestion}
-            disabled={currentQuestionIndex === 0}
-            className="flex items-center gap-1"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            <span>Anterior</span>
-          </Button>
+      {/* Footer con controles de paginación - Mejorado para móviles */}
+      <div className="flex justify-center items-center p-3 sm:p-4 bg-card shadow-md border-t border-border flex-shrink-0 sticky bottom-0 z-10">
+        <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4 w-full sm:w-auto">
+          {/* Botones de navegación y paginación en modo móvil */}
+          <div className="flex items-center justify-between w-full sm:w-auto gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={goToPreviousQuestion}
+              disabled={currentQuestionIndex === 0}
+              className="flex items-center gap-1 h-10 px-3"
+            >
+              <ChevronLeft className="h-5 w-5" />
+              <span className="hidden xs:inline font-medium">Anterior</span>
+            </Button>
 
-          {/* Paginación con tooltips */}
-          <div className="flex items-center gap-2">
-            {evaluation.questions.map((_, index) => {
-              const statusStyle = getQuestionStatusColor(index);
-              return (
-                <TooltipProvider key={index}>
-                  <Tooltip delayDuration={300}>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={() => goToQuestion(index)}
-                        className={`relative flex items-center justify-center h-8 w-8 rounded-full ${statusStyle.bgColor} shadow-md hover:shadow-lg transform hover:scale-110 transition-all duration-200 ease-in-out`}
-                        aria-label={`Pregunta ${index + 1}: ${statusStyle.tooltip}`}
-                      >
-                        {/* Círculo interno (número de pregunta) */}
-                        <div className={`absolute inset-1 flex items-center justify-center rounded-full ${currentQuestionIndex === index ? 'bg-primary text-primary-foreground font-medium' : 'bg-blue-600 text-white'} transition-colors duration-200 ease-in-out`}>
-                          <span className="text-xs font-semibold">{index + 1}</span>
-                        </div>
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="text-xs font-medium">
-                      <p>{statusStyle.tooltip}</p>
-                      {statusStyle.score !== null && (
-                        <p className="font-semibold mt-1">Nota: {statusStyle.score.toFixed(1)}/5.0</p>
-                      )}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              );
-            })}
+            {/* Paginación con tooltips */}
+            <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto py-1 px-1 max-w-[calc(100vw-180px)] sm:max-w-none">
+              {evaluation.questions.map((_, index) => {
+                const statusStyle = getQuestionStatusColor(index);
+                return (
+                  <TooltipProvider key={index}>
+                    <Tooltip delayDuration={300}>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={() => goToQuestion(index)}
+                          className={`relative flex-shrink-0 flex items-center justify-center h-7 w-7 sm:h-8 sm:w-8 rounded-full ${statusStyle.bgColor} shadow-md hover:shadow-lg transform hover:scale-110 transition-all duration-200 ease-in-out`}
+                          aria-label={`Pregunta ${index + 1}: ${statusStyle.tooltip}`}
+                        >
+                          {/* Círculo interno (número de pregunta) */}
+                          <div className={`absolute inset-1 flex items-center justify-center rounded-full ${currentQuestionIndex === index ? 'bg-primary text-primary-foreground font-medium' : 'bg-blue-600 text-white'} transition-colors duration-200 ease-in-out`}>
+                            <span className="text-xs font-semibold">{index + 1}</span>
+                          </div>
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs font-medium">
+                        <p>{statusStyle.tooltip}</p>
+                        {statusStyle.score !== null && (
+                          <p className="font-semibold mt-1">Nota: {statusStyle.score.toFixed(1)}/5.0</p>
+                        )}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                );
+              })}
+            </div>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={goToNextQuestion}
+              disabled={currentQuestionIndex === evaluation.questions.length - 1}
+              className="flex items-center gap-1 h-10 px-3"
+            >
+              <span className="hidden xs:inline font-medium">Siguiente</span>
+              <ChevronRight className="h-5 w-5" />
+            </Button>
           </div>
-
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={goToNextQuestion}
-            disabled={currentQuestionIndex === evaluation.questions.length - 1}
-            className="flex items-center gap-1"
-          >
-            <span>Siguiente</span>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
         </div>
       </div>
 
@@ -1282,12 +1445,66 @@ function EvaluationContent() {
                   Enviando...
                 </>
               ) : (
-                <>Enviar evaluación</>
+                'Enviar evaluación'
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Modal para mostrar el resultado de la evaluación */}
+      {evaluationResult && (
+        <AlertDialog open={isResultModalOpen} onOpenChange={setIsResultModalOpen}>
+          <AlertDialogContent className="max-w-3xl">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-xl flex items-center gap-2">
+                {evaluationResult.grade !== undefined ? (
+                  evaluationResult.grade >= 4 ? (
+                    <CheckCircle className="h-6 w-6 text-emerald-500" />
+                  ) : evaluationResult.grade >= 3 ? (
+                    <AlertCircle className="h-6 w-6 text-amber-500" />
+                  ) : (
+                    <XCircle className="h-6 w-6 text-red-500" />
+                  )
+                ) : (
+                  evaluationResult.success ? (
+                    <CheckCircle className="h-6 w-6 text-emerald-500" />
+                  ) : (
+                    <AlertCircle className="h-6 w-6 text-amber-500" />
+                  )
+                )}
+                <span>
+                  Resultado de la evaluación
+                  {evaluationResult.grade !== undefined && (
+                    <span className={`ml-2 px-3 py-1 rounded-full text-sm font-medium ${
+                      evaluationResult.grade >= 4 ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300' : 
+                      evaluationResult.grade >= 3 ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300' : 
+                      'bg-red-500/20 text-red-700 dark:text-red-300'
+                    }`}>
+                      {evaluationResult.grade.toFixed(1)}/5.0
+                    </span>
+                  )}
+                </span>
+              </AlertDialogTitle>
+              <AlertDialogDescription className="text-xl font-medium mt-2">
+                {evaluationResult.message}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            
+            {evaluationResult.details && (
+              <div className="my-4 max-h-[60vh] overflow-y-auto p-5 bg-muted/50 rounded-lg border">
+                <p className="text-lg whitespace-pre-wrap leading-relaxed">{evaluationResult.details}</p>
+              </div>
+            )}
+            
+            <AlertDialogFooter className="gap-2">
+              <AlertDialogAction onClick={() => setIsResultModalOpen(false)} className="w-full sm:w-auto">
+                Cerrar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   )
 }
