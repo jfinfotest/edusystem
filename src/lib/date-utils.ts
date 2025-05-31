@@ -2,19 +2,22 @@ import { format, toZonedTime } from 'date-fns-tz';
 import { parseISO } from 'date-fns';
 
 /**
- * Constante que define la zona horaria predeterminada para la aplicación.
- * Utiliza 'UTC' como zona horaria para compatibilidad con Vercel.
+ * Obtiene la zona horaria configurada para la aplicación.
+ * Utiliza la variable de entorno NEXT_PUBLIC_TIMEZONE si está disponible,
+ * o 'UTC' como valor predeterminado.
  */
-export const DEFAULT_TIMEZONE = 'UTC';
+export const getConfiguredTimeZone = () => {
+  return process.env.NEXT_PUBLIC_TIMEZONE || 'UTC';
+};
 
 /**
  * Formatea una fecha según la zona horaria especificada.
  * @param date - La fecha a formatear (Date o string ISO)
  * @param formatStr - El formato de fecha a utilizar (por defecto: 'yyyy-MM-dd HH:mm:ss')
- * @param timeZone - La zona horaria a utilizar (por defecto: DEFAULT_TIMEZONE)
+ * @param timeZone - La zona horaria a utilizar (por defecto: configurada en la aplicación)
  * @returns La fecha formateada como string
  */
-export const formatDate = (date: Date | string, formatStr = 'yyyy-MM-dd HH:mm:ss', timeZone = DEFAULT_TIMEZONE) => {
+export const formatDate = (date: Date | string, formatStr = 'yyyy-MM-dd HH:mm:ss', timeZone = getConfiguredTimeZone()) => {
   // Asegurarse de que date sea un objeto Date
   const dateObj = typeof date === 'string' ? parseISO(date) : date;
   const zonedDate = toZonedTime(dateObj, timeZone);
@@ -24,10 +27,10 @@ export const formatDate = (date: Date | string, formatStr = 'yyyy-MM-dd HH:mm:ss
 /**
  * Convierte una fecha UTC a la zona horaria especificada.
  * @param date - La fecha UTC a convertir (Date o string ISO)
- * @param timeZone - La zona horaria a utilizar (por defecto: DEFAULT_TIMEZONE)
+ * @param timeZone - La zona horaria a utilizar (por defecto: configurada en la aplicación)
  * @returns La fecha convertida a la zona horaria especificada
  */
-export const convertToTimeZone = (date: Date | string, timeZone = DEFAULT_TIMEZONE) => {
+export const convertToTimeZone = (date: Date | string, timeZone = getConfiguredTimeZone()) => {
   // Asegurarse de que date sea un objeto Date
   const dateObj = typeof date === 'string' ? parseISO(date) : date;
   return toZonedTime(dateObj, timeZone);

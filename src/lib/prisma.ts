@@ -21,11 +21,11 @@ prisma.$use(async (params, next) => {
     if (params.args.data) {
       // Asegurarse de que todas las fechas estén en UTC
       // Recorrer recursivamente los datos para convertir fechas a UTC
-      const processData = (data: any) => {
+      const processData = (data: Record<string, unknown>) => {
         for (const key in data) {
           if (data[key] instanceof Date) {
             // Asegurarse de que la fecha esté en UTC
-            const date = new Date(data[key]);
+            const date = new Date(data[key] as Date);
             data[key] = new Date(Date.UTC(
               date.getFullYear(),
               date.getMonth(),
@@ -37,7 +37,7 @@ prisma.$use(async (params, next) => {
             ));
           } else if (typeof data[key] === 'object' && data[key] !== null) {
             // Procesar objetos anidados
-            processData(data[key]);
+            processData(data[key] as Record<string, unknown>);
           }
         }
       };

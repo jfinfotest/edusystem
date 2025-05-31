@@ -1,12 +1,5 @@
 {
-  "env": {
-    "TZ": "UTC"
-  },
-  "build": {
-    "env": {
-      "TZ": "UTC"
-    }
-  },
+  "buildCommand": "BUILD_TIME=$(date -u +\"%Y-%m-%dT%H:%M:%SZ\") TZ=UTC next build",
   "regions": ["iad1"],
   "headers": [
     {
