@@ -1,0 +1,7 @@
+{
+  "regions": ["iad1"],
+  "buildCommand": "npm run build",
+  "env": {
+    "TZ": "America/Bogota"
+  }
+}
