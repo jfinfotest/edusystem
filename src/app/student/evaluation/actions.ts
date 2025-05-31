@@ -61,7 +61,7 @@ export async function getAttemptByUniqueCode(uniqueCode: string, email?: string)
     }
 
     // Verificar si el intento está dentro del tiempo permitido
-    const now = new Date();
+    // const now = new Date();
     // if (now < attempt.startTime) {
     //   return { success: false, error: 'La evaluación aún no ha comenzado' };
     // }
