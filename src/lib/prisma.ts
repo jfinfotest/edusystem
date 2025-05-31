@@ -19,9 +19,30 @@ prisma.$use(async (params, next) => {
   // Procesar las fechas antes de enviar a la base de datos
   if (params.action === 'create' || params.action === 'update' || params.action === 'upsert') {
     if (params.args.data) {
-      // Convertir fechas a UTC si es necesario
-      // No es necesario hacer nada aquí ya que Prisma maneja las fechas en UTC por defecto
-      // Este middleware está aquí para posibles personalizaciones futuras
+      // Asegurarse de que todas las fechas estén en UTC
+      // Recorrer recursivamente los datos para convertir fechas a UTC
+      const processData = (data: any) => {
+        for (const key in data) {
+          if (data[key] instanceof Date) {
+            // Asegurarse de que la fecha esté en UTC
+            const date = new Date(data[key]);
+            data[key] = new Date(Date.UTC(
+              date.getFullYear(),
+              date.getMonth(),
+              date.getDate(),
+              date.getHours(),
+              date.getMinutes(),
+              date.getSeconds(),
+              date.getMilliseconds()
+            ));
+          } else if (typeof data[key] === 'object' && data[key] !== null) {
+            // Procesar objetos anidados
+            processData(data[key]);
+          }
+        }
+      };
+      
+      processData(params.args.data);
     }
   }
   return next(params);
