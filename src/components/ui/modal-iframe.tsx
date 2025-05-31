@@ -39,11 +39,12 @@ export function ModalIframe({ isOpen, onClose, url, title = 'Ayuda', fullScreen 
           <h2 className="text-xl font-semibold">{title}</h2>
           <Button 
             variant={fullScreen ? "destructive" : "ghost"} 
-            size="icon" 
+            size={fullScreen ? "default" : "icon"}
             onClick={onClose}
-            className={fullScreen ? "shadow-md hover:shadow-lg transition-all" : ""}
+            className={fullScreen ? "shadow-md hover:shadow-lg transition-all flex items-center gap-2" : ""}
           >
             <X className={`${fullScreen ? "h-6 w-6" : "h-5 w-5"}`} />
+            {fullScreen && <span>Cerrar ayuda</span>}
           </Button>
         </div>
         

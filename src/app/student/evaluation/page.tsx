@@ -8,8 +8,7 @@ import dynamic from 'next/dynamic'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
-import { AlertCircle, AlertTriangle, BarChart, CheckCircle, ChevronLeft, ChevronRight, Clock, HelpCircle, Loader2, Send, Sparkles, X, XCircle } from 'lucide-react'
+import { AlertCircle, AlertTriangle, BarChart, CheckCircle, ChevronLeft, ChevronRight, Clock, HelpCircle, Loader2, Send, Sparkles, XCircle } from 'lucide-react'
 import { ModalIframe } from '@/components/ui/modal-iframe'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -99,7 +98,7 @@ function EvaluationContent() {
   // Nombres de los temas
   const monokaiThemeName = "monokai-custom";
   const lightThemeName = "github-light-custom";
-  
+
   useEffect(() => {
     if (monaco && !themeInitializedRef.current) {
       // Definir tema oscuro (Monokai)
@@ -107,7 +106,7 @@ function EvaluationContent() {
         ...Monokai,
         base: Monokai.base as "vs-dark"
       });
-      
+
       // Definir tema claro (podemos usar un tema predeterminado de Monaco)
       monaco.editor.defineTheme(lightThemeName, {
         base: "vs" as const,
@@ -136,10 +135,10 @@ function EvaluationContent() {
           'editor.selectionHighlightBorder': '#dddddd'
         }
       });
-      
+
       themeInitializedRef.current = true;
     }
-    
+
     // Aplicar el tema solo cuando cambie el tema actual
     if (monaco && themeInitializedRef.current && previousThemeRef.current !== theme) {
       monaco.editor.setTheme(theme === 'dark' ? monokaiThemeName : lightThemeName);
@@ -168,6 +167,8 @@ function EvaluationContent() {
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false)
   // Estado para controlar el modal de confirmación de envío
   const [isSubmitDialogOpen, setIsSubmitDialogOpen] = useState(false)
+  // Estado para manejar mensajes de error
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   // Estado para el contador de intentos de fraude
   const [fraudAttempts, setFraudAttempts] = useState<number>(0)
   // Estado para el tiempo fuera de la evaluación
@@ -219,10 +220,18 @@ function EvaluationContent() {
         // Importar las acciones del servidor de forma dinámica para evitar errores de SSR
         const { getAttemptByUniqueCode, createSubmission } = await import('./actions')
 
-        // Obtener los datos del intento por el código único
-        const attemptResult = await getAttemptByUniqueCode(uniqueCode)
+        // Obtener los datos del intento por el código único y el email del estudiante
+        const attemptResult = await getAttemptByUniqueCode(uniqueCode, email)
 
         if (!attemptResult.success) {
+          // Verificar si la evaluación ya fue enviada
+          if (attemptResult.alreadySubmitted) {
+            // Redirigir silenciosamente a la página de éxito sin mostrar error
+            // Mantener el estado de carga para evitar mostrar el error
+            router.push(`/student/success?alreadySubmitted=true&code=${uniqueCode}`)
+            return // No cambiar el estado de loading para evitar mostrar el error
+          }
+          
           // Verificar si el error es debido a que la evaluación ha expirado
           if (attemptResult.error === 'La evaluación ya ha finalizado' ||
             attemptResult.error === 'La evaluación aún no ha comenzado') {
@@ -231,10 +240,11 @@ function EvaluationContent() {
             setLoading(false)
             return
           }
-
-          // Para otros errores, mostrar mensaje y redirigir
+          
+          // Para otros errores, mostrar mensaje de error y establecer estado
           console.error(attemptResult.error)
-          router.push('/student')
+          setErrorMessage(attemptResult.error || 'Error al cargar la evaluación')
+          setLoading(false)
           return
         }
 
@@ -264,14 +274,13 @@ function EvaluationContent() {
         const submissionResult = await createSubmission(attempt.id, email, firstName, lastName)
 
         if (!submissionResult.success) {
-          // Mostrar el mensaje de error específico
-          console.error(submissionResult.error || 'Error al crear la presentación')
-
           // Si el error es porque la evaluación ya fue enviada, redirigir a una página específica
           if (submissionResult.error && submissionResult.error.includes('ya fue enviada')) {
-            router.push(`/student/evaluation/success?alreadySubmitted=true&code=${uniqueCode}`)
+            // No mostrar mensaje de error en la consola para este caso específico
+            router.push(`/student/success?alreadySubmitted=true&code=${uniqueCode}`)
           } else {
-            // Para otros errores, redirigir a la página principal
+            // Para otros errores, mostrar mensaje de error y redirigir a la página principal
+            console.error(submissionResult.error || 'Error al crear la presentación')
             router.push('/student')
           }
           return
@@ -397,14 +406,14 @@ function EvaluationContent() {
         throw new Error(saveResult.error || 'Error al guardar las respuestas')
       }
 
-      // Marcar la presentación como enviada
+      // Marcar la presentación como enviada y generar reporte
       const submitResult = await submitEvaluation(submissionId)
 
       if (!submitResult.success) {
         // Verificar si el error es porque la evaluación ya fue enviada
         if (submitResult.error && submitResult.error.includes('ya fue enviada')) {
           console.warn(submitResult.error)
-          router.push(`/student/evaluation/success?alreadySubmitted=true&code=${uniqueCode}`)
+          router.push(`/student/success?alreadySubmitted=true&code=${uniqueCode}`)
           return
         } else {
           throw new Error(submitResult.error || 'Error al enviar la evaluación')
@@ -412,7 +421,16 @@ function EvaluationContent() {
       }
 
       console.log('Evaluación enviada correctamente')
-      router.push('/student/evaluation/success')
+      // Pasar el reporte codificado a la página de éxito
+      if (submitResult.encodedReport) {
+        console.log('Reporte codificado a enviar:', submitResult.encodedReport)
+        // Usar encodeURIComponent para asegurar que los caracteres especiales se manejen correctamente
+        const encodedReportParam = encodeURIComponent(submitResult.encodedReport)
+        router.push(`/student/success?report=${encodedReportParam}`)
+      } else {
+        console.log('No hay reporte para enviar')
+        router.push('/student/success')
+      }
     } catch (error) {
       console.error('Error al enviar la evaluación:', error)
       console.error('Error al enviar la evaluación. Por favor, intenta de nuevo.')
@@ -552,12 +570,12 @@ function EvaluationContent() {
     const handleKeyDown = async (e: KeyboardEvent) => {
       // Detectar combinaciones de teclas sospechosas
       if ((e.altKey && e.key === 'Tab') || // Alt+Tab
-          e.key === 'Meta' || // Tecla Windows/Command
-          (e.ctrlKey && e.key === 'Escape') || // Ctrl+Esc (Menú inicio en Windows)
-          (e.altKey && e.key === 'F4') || // Alt+F4
-          (e.ctrlKey && e.key === 'w') || // Ctrl+W (cerrar pestaña)
-          (e.ctrlKey && e.key === 't') || // Ctrl+T (nueva pestaña)
-          (e.ctrlKey && e.key === 'n')) { // Ctrl+N (nueva ventana)
+        e.key === 'Meta' || // Tecla Windows/Command
+        (e.ctrlKey && e.key === 'Escape') || // Ctrl+Esc (Menú inicio en Windows)
+        (e.altKey && e.key === 'F4') || // Alt+F4
+        (e.ctrlKey && e.key === 'w') || // Ctrl+W (cerrar pestaña)
+        (e.ctrlKey && e.key === 't') || // Ctrl+T (nueva pestaña)
+        (e.ctrlKey && e.key === 'n')) { // Ctrl+N (nueva ventana)
         registerFraudAttempt(`uso de tecla sospechosa: ${e.key}`);
         e.preventDefault();
         return false;
@@ -567,8 +585,8 @@ function EvaluationContent() {
     // 7. Detector de cambio de tamaño de ventana (posible minimización)
     const handleResize = async () => {
       // Si la ventana se hace muy pequeña, podría ser minimizada
-      if (window.outerHeight < window.innerHeight || 
-          window.outerWidth < window.innerWidth) {
+      if (window.outerHeight < window.innerHeight ||
+        window.outerWidth < window.innerWidth) {
         registerFraudAttempt('cambio de tamaño de ventana');
       }
     };
@@ -600,9 +618,21 @@ function EvaluationContent() {
 
     // 11. Detector de contexto de menú (clic derecho)
     const handleContextMenu = async (e: MouseEvent) => {
-      registerFraudAttempt('uso de menú contextual');
-      e.preventDefault();
-      return false;
+      // Verificar si el clic derecho fue en un textarea
+      const target = e.target as HTMLElement;
+      const isTextarea = target.tagName === 'TEXTAREA' ||
+        target.closest('textarea') !== null ||
+        target.getAttribute('data-slot') === 'textarea';
+
+      // Permitir el menú contextual en textareas para corrección ortográfica
+      if (isTextarea) {
+        return true; // Permitir el comportamiento por defecto en textareas
+      } else {
+        // Seguir bloqueando el menú contextual en el resto de la página
+        registerFraudAttempt('uso de menú contextual');
+        e.preventDefault();
+        return false;
+      }
     };
 
     // 12. Detector de selección de texto
@@ -644,11 +674,11 @@ function EvaluationContent() {
     document.addEventListener('dragstart', handleDragStart);
     window.addEventListener('beforeprint', handleBeforePrint);
     navigator.mediaDevices?.addEventListener('devicechange', handleScreenCapture);
-    
+
     // Interceptar la API de compartir si está disponible
     const originalShare = navigator.share;
     if (navigator.share) {
-      navigator.share = async (data) => {
+      navigator.share = async () => {
         handleShare();
         return Promise.reject(new Error('Compartir no está permitido durante la evaluación'));
       };
@@ -671,7 +701,7 @@ function EvaluationContent() {
       document.removeEventListener('dragstart', handleDragStart);
       window.removeEventListener('beforeprint', handleBeforePrint);
       navigator.mediaDevices?.removeEventListener('devicechange', handleScreenCapture);
-      
+
       // Restaurar la API de compartir si fue modificada
       if (navigator.share && originalShare) {
         navigator.share = originalShare;
@@ -865,40 +895,7 @@ function EvaluationContent() {
 
 
 
-  // Determinar el estilo de la alerta según la calificación o el resultado de evaluación
-  const getAlertStyling = (result: { success: boolean; grade?: number }) => {
-    let bgColorClass = ''
-    let icon = null
-    const iconClasses = 'h-6 w-6 mr-3 text-white' // Iconos más grandes y con más margen
 
-    // Si hay una calificación, usamos eso para determinar el estilo
-    if (result.grade !== undefined) {
-      if (result.grade >= 0 && result.grade < 3) {
-        bgColorClass = 'bg-red-600' // Tono de rojo más moderno
-        icon = <AlertCircle className={iconClasses} />
-      } else if (result.grade >= 3 && result.grade < 4) {
-        bgColorClass = 'bg-amber-500' // Tono de amarillo (ámbar) más moderno
-        icon = <AlertCircle className={iconClasses} />
-      } else if (result.grade >= 4 && result.grade <= 5) {
-        bgColorClass = 'bg-emerald-500' // Tono de verde (esmeralda) más moderno
-        icon = <CheckCircle className={iconClasses} />
-      }
-    } else {
-      // Si no hay calificación, usamos el éxito/fracaso para determinar el estilo
-      bgColorClass = result.success ? 'bg-emerald-500' : 'bg-amber-500'
-      icon = result.success ? <CheckCircle className={iconClasses} /> : <AlertCircle className={iconClasses} />
-    }
-
-    // Añadir clase para el contador de fraude
-    const fraudClass = fraudAttempts > 0 ? 'flex justify-between items-center' : ''
-
-    return {
-      alertClass: `p-5 rounded-lg shadow-md text-white ${bgColorClass} mb-2 ${fraudClass}`,
-      iconComponent: icon,
-      titleClass: "text-xl font-semibold mb-1.5 text-white",
-      descriptionClass: "text-sm mt-1 text-white opacity-90 whitespace-pre-wrap"
-    }
-  }
 
   // Obtener el color del círculo según el estado de la respuesta
   const getQuestionStatusColor = (index: number) => {
@@ -995,6 +992,36 @@ function EvaluationContent() {
     return renderExpiredEvaluation();
   }
 
+  // Mostrar mensaje de error si hay un problema con la evaluación
+  if (errorMessage) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <Card className="w-full max-w-md shadow-lg">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-2xl font-bold text-center text-red-600 dark:text-red-500">
+              Prueba no disponible
+            </CardTitle>
+            <CardDescription className="text-center">
+              {errorMessage}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center">
+            <AlertCircle className="h-16 w-16 text-red-500 mb-4" />
+            <p className="text-center mb-6">
+              Por favor, verifica el código de evaluación o contacta con tu profesor si necesitas acceso a esta evaluación.
+            </p>
+            <Button
+              onClick={() => router.push('/student')}
+              className="w-full bg-primary hover:bg-primary/90"
+            >
+              Volver a ingresar código
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+  
   if (!evaluation) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -1027,7 +1054,6 @@ function EvaluationContent() {
     }
   }
 
-  const alertStyling = evaluationResult ? getAlertStyling(evaluationResult) : null
 
   // Función para abrir el modal de ayuda
   const handleOpenHelpModal = () => {
@@ -1285,7 +1311,7 @@ function EvaluationContent() {
                         return false;
                       }
                     });
-                    
+
                     // Ajustar opciones del editor cuando cambia el tamaño de la ventana
                     const updateEditorOptions = () => {
                       const isMobile = window.innerWidth < 640;
@@ -1309,7 +1335,7 @@ function EvaluationContent() {
                         cursorWidth: isMobile ? 2 : 1
                       });
                     };
-                    
+
                     window.addEventListener('resize', updateEditorOptions);
                     return () => window.removeEventListener('resize', updateEditorOptions);
                   }}
@@ -1320,7 +1346,7 @@ function EvaluationContent() {
                 placeholder="Escribe tu respuesta aquí..."
                 value={currentAnswer.answer}
                 onChange={(e) => handleAnswerChange(e.target.value)}
-                className="resize-none h-full rounded-lg bg-card text-card-foreground border border-border focus:ring-2 focus:ring-primary focus:border-primary focus:border-primary overflow-y-auto"
+                className="resize-none h-full rounded-lg bg-card text-card-foreground border border-border focus:ring-2 focus:ring-primary focus:border-primary overflow-y-auto"
                 style={{
                   width: '100%',
                   height: '100%',
@@ -1331,9 +1357,7 @@ function EvaluationContent() {
                   padding: window.innerWidth < 640 ? '16px' : '12px',
                   lineHeight: '1.6',
                 }}
-                onCopy={(e) => e.preventDefault()}
-                onCut={(e) => e.preventDefault()}
-                onPaste={(e) => e.preventDefault()}
+                spellCheck={true}
                 onKeyDown={(e) => {
                   // Prevenir Ctrl+C, Ctrl+V, Ctrl+X
                   if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'v' || e.key === 'x')) {
@@ -1418,8 +1442,6 @@ function EvaluationContent() {
         />
       )}
 
-
-
       {/* Modal de confirmación para enviar evaluación */}
       <AlertDialog open={isSubmitDialogOpen} onOpenChange={setIsSubmitDialogOpen}>
         <AlertDialogContent>
@@ -1476,11 +1498,10 @@ function EvaluationContent() {
                 <span>
                   Resultado de la evaluación
                   {evaluationResult.grade !== undefined && (
-                    <span className={`ml-2 px-3 py-1 rounded-full text-sm font-medium ${
-                      evaluationResult.grade >= 4 ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300' : 
-                      evaluationResult.grade >= 3 ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300' : 
-                      'bg-red-500/20 text-red-700 dark:text-red-300'
-                    }`}>
+                    <span className={`ml-2 px-3 py-1 rounded-full text-sm font-medium ${evaluationResult.grade >= 4 ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300' :
+                      evaluationResult.grade >= 3 ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300' :
+                        'bg-red-500/20 text-red-700 dark:text-red-300'
+                      }`}>
                       {evaluationResult.grade.toFixed(1)}/5.0
                     </span>
                   )}
@@ -1490,13 +1511,13 @@ function EvaluationContent() {
                 {evaluationResult.message}
               </AlertDialogDescription>
             </AlertDialogHeader>
-            
+
             {evaluationResult.details && (
               <div className="my-4 max-h-[60vh] overflow-y-auto p-5 bg-muted/50 rounded-lg border">
                 <p className="text-lg whitespace-pre-wrap leading-relaxed">{evaluationResult.details}</p>
               </div>
             )}
-            
+
             <AlertDialogFooter className="gap-2">
               <AlertDialogAction onClick={() => setIsResultModalOpen(false)} className="w-full sm:w-auto">
                 Cerrar

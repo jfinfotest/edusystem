@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { PenTool } from 'lucide-react'
 
 
 export default function StudentEntryPage() {
@@ -69,7 +70,10 @@ export default function StudentEntryPage() {
     <div className="flex items-center justify-center h-screen w-screen bg-background overflow-hidden">
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="pb-4">
-          <CardTitle className="text-2xl font-bold text-center">Evaluación SEIA</CardTitle>
+          <div className="flex items-center justify-center gap-2 glow-effect">
+            <PenTool className="h-6 w-6 text-primary blur-effect" />
+            <CardTitle className="text-2xl font-bold text-center">SEIA</CardTitle>
+          </div>
           <CardDescription className="text-center">
             Ingresa el código de evaluación proporcionado por tu profesor y tus datos para comenzar.
           </CardDescription>

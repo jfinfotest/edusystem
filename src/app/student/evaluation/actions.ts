@@ -16,7 +16,7 @@ type StudentAnswer = {
 /**
  * Obtiene los datos de un intento de evaluación por su código único
  */
-export async function getAttemptByUniqueCode(uniqueCode: string) {
+export async function getAttemptByUniqueCode(uniqueCode: string, email?: string) {
   try {
     // Validar que el código no esté vacío
     if (!uniqueCode || uniqueCode.trim() === '') {
@@ -36,12 +36,28 @@ export async function getAttemptByUniqueCode(uniqueCode: string) {
           include: {
             questions: true
           }
-        }
+        },
+        submissions: email ? {
+          where: {
+            email: email,
+            submittedAt: { not: null } // Buscar presentaciones ya enviadas para este email
+          },
+          take: 1
+        } : undefined
       }
     });
 
     if (!attempt) {
       return { success: false, error: 'Código de evaluación no válido o no encontrado' };
+    }
+
+    // Verificar si ya existe una presentación enviada para este estudiante específico
+    if (email && attempt.submissions && attempt.submissions.length > 0) {
+      return { 
+        success: false, 
+        error: 'Esta evaluación ya fue enviada anteriormente. No es posible presentarla nuevamente.',
+        alreadySubmitted: true
+      };
     }
 
     // Verificar si el intento está dentro del tiempo permitido
@@ -330,13 +346,20 @@ export async function saveAnswers(submissionId: number, answers: StudentAnswer[]
 }
 
 /**
- * Finaliza una presentación marcándola como enviada
+ * Finaliza una presentación marcándola como enviada y genera un reporte de resultados
  */
 export async function submitEvaluation(submissionId: number) {
   try {
     // Verificar si la presentación ya fue enviada
     const existingSubmission = await prisma.submission.findUnique({
-      where: { id: submissionId }
+      where: { id: submissionId },
+      include: {
+        attempt: {
+          include: {
+            evaluation: true
+          }
+        }
+      }
     });
 
     // Si ya fue enviada, retornar error
@@ -349,18 +372,81 @@ export async function submitEvaluation(submissionId: number) {
     }
 
     // Asegurar que el promedio de calificaciones esté actualizado
-    await updateSubmissionScore(submissionId);
-
-    // Actualizar la presentación con la fecha de envío
-    const submission = await prisma.submission.update({
-      where: { id: submissionId },
-      data: {
-        submittedAt: new Date()
+    const scoreResult = await updateSubmissionScore(submissionId);
+    
+    // Obtener todas las respuestas con sus preguntas para generar el reporte
+    const answersResult = await getAnswersBySubmissionId(submissionId);
+    
+    if (!answersResult.success || !scoreResult.success) {
+      throw new Error('Error al obtener los datos para el reporte');
+    }
+    
+    // Actualizar la presentación con la fecha de envío usando una transacción para evitar condiciones de carrera
+    const submission = await prisma.$transaction(async (tx) => {
+      // Verificar nuevamente si la presentación ya fue enviada (dentro de la transacción)
+      const currentSubmission = await tx.submission.findUnique({
+        where: { id: submissionId }
+      });
+      
+      if (currentSubmission && currentSubmission.submittedAt !== null) {
+        return currentSubmission; // Ya fue enviada, devolver sin modificar
       }
+      
+      // Si no ha sido enviada, actualizarla
+      return await tx.submission.update({
+        where: { id: submissionId },
+        data: {
+          submittedAt: new Date()
+        }
+      });
     });
+    
+    // Preparar los datos para el reporte
+    const { generateEvaluationReport } = await import('@/lib/gemini-report-generation');
+    
+    // Verificar que existingSubmission y answersResult.answers no sean null o undefined
+    if (!existingSubmission || !answersResult.answers) {
+      throw new Error('Datos de presentación o respuestas no disponibles');
+    }
+    
+    // Formatear las respuestas para el reporte
+    const answerSummaries = answersResult.answers.map(answer => ({
+      questionText: answer.question.text,
+      questionType: answer.question.type,
+      studentAnswer: answer.answer,
+      score: answer.score,
+      language: answer.question.type === 'CODE' ? 
+        JSON.parse(answer.question.answer || '{}').language || 'javascript' : 
+        undefined
+    }));
+    
+    // Generar el reporte
+    const report = await generateEvaluationReport(
+      `${existingSubmission.firstName || ''} ${existingSubmission.lastName || ''}`.trim(),
+      existingSubmission.attempt?.evaluation?.title || 'Evaluación',
+      answerSummaries,
+      scoreResult.averageScore || 0,
+      existingSubmission.fraudAttempts || 0
+    );
+    
+    // Codificar el reporte para pasarlo como parámetro URL
+    let encodedReport = '';
+    try {
+      const reportJson = JSON.stringify(report);
+      console.log('Reporte a codificar:', reportJson);
+      encodedReport = Buffer.from(reportJson).toString('base64');
+      console.log('Reporte codificado:', encodedReport);
+    } catch (encodeError) {
+      console.error('Error al codificar el reporte:', encodeError);
+    }
 
     revalidatePath('/student');
-    return { success: true, submission };
+    return { 
+      success: true, 
+      submission,
+      report,
+      encodedReport
+    };
   } catch (error) {
     console.error('Error al enviar la evaluación:', error);
     return { success: false, error: 'Error al enviar la evaluación' };
