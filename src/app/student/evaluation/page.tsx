@@ -12,6 +12,7 @@ import { AlertCircle, AlertTriangle, BarChart, CheckCircle, ChevronLeft, Chevron
 import { ModalIframe } from '@/components/ui/modal-iframe'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { FraudReflectionModal } from '@/components/ui/fraud-reflection-modal'
 
 // Importar tema de monaco-themes (por ejemplo, Monokai)
 import Monokai from 'monaco-themes/themes/Monokai.json';
@@ -181,6 +182,11 @@ function EvaluationContent() {
 
   // Estado para controlar si la evaluación está expirada
   const [isEvaluationExpired, setIsEvaluationExpired] = useState(false)
+
+  // Estado para el modal de reflexión sobre fraude
+  const [isFraudModalOpen, setIsFraudModalOpen] = useState(false)
+  const [currentFraudType, setCurrentFraudType] = useState('')
+  const [currentFraudMessage, setCurrentFraudMessage] = useState('')
 
   // Refs for state values needed in event handlers to avoid dependency loops
   const fraudAttemptsRef = useRef(fraudAttempts);
@@ -482,7 +488,13 @@ function EvaluationContent() {
       const newLeaveTime = Date.now();
       setLeaveTime(newLeaveTime);
 
-      console.log(`Intento de fraude detectado: ${reason}`);
+      const fraudMessage = `Intento de fraude detectado: ${reason}`;
+      console.log(fraudMessage);
+
+      // Mostrar el modal de reflexión sobre fraude
+      setCurrentFraudType(reason);
+      setCurrentFraudMessage(fraudMessage);
+      setIsFraudModalOpen(true);
 
       setFraudAttempts(prevFraudAttempts => {
         const nextFraudValue = prevFraudAttempts + 1;
@@ -611,35 +623,35 @@ function EvaluationContent() {
       return false;
     };
 
-    // 10. Detector de captura de pantalla (no funciona en todos los navegadores)
-    const handleScreenCapture = async () => {
-      registerFraudAttempt('posible captura de pantalla');
-    };
+    // // 10. Detector de captura de pantalla (no funciona en todos los navegadores)
+    // const handleScreenCapture = async () => {
+    //   registerFraudAttempt('posible captura de pantalla');
+    // };
 
-    // 11. Detector de contexto de menú (clic derecho)
-    const handleContextMenu = async (e: MouseEvent) => {
-      // Verificar si el clic derecho fue en un textarea
-      const target = e.target as HTMLElement;
-      const isTextarea = target.tagName === 'TEXTAREA' ||
-        target.closest('textarea') !== null ||
-        target.getAttribute('data-slot') === 'textarea';
+    // // 11. Detector de contexto de menú (clic derecho)
+    // const handleContextMenu = async (e: MouseEvent) => {
+    //   // Verificar si el clic derecho fue en un textarea
+    //   const target = e.target as HTMLElement;
+    //   const isTextarea = target.tagName === 'TEXTAREA' ||
+    //     target.closest('textarea') !== null ||
+    //     target.getAttribute('data-slot') === 'textarea';
 
-      // Permitir el menú contextual en textareas para corrección ortográfica
-      if (isTextarea) {
-        return true; // Permitir el comportamiento por defecto en textareas
-      } else {
-        // Seguir bloqueando el menú contextual en el resto de la página
-        registerFraudAttempt('uso de menú contextual');
-        e.preventDefault();
-        return false;
-      }
-    };
+    //   // Permitir el menú contextual en textareas para corrección ortográfica
+    //   if (isTextarea) {
+    //     return true; // Permitir el comportamiento por defecto en textareas
+    //   } else {
+    //     // Seguir bloqueando el menú contextual en el resto de la página
+    //     registerFraudAttempt('uso de menú contextual');
+    //     e.preventDefault();
+    //     return false;
+    //   }
+    // };
 
-    // 12. Detector de selección de texto
-    const handleSelectStart = async () => {
-      // No bloqueamos la selección pero la registramos
-      registerFraudAttempt('selección de texto');
-    };
+    // // 12. Detector de selección de texto
+    // const handleSelectStart = async () => {
+    //   // No bloqueamos la selección pero la registramos
+    //   registerFraudAttempt('selección de texto');
+    // };
 
     // 13. Detector de arrastrar y soltar
     const handleDragStart = async (e: DragEvent) => {
@@ -658,8 +670,9 @@ function EvaluationContent() {
       registerFraudAttempt('intento de compartir contenido');
     };
 
-    // Registrar todos los event listeners
+    // Registrar todos los event listeners - solo los que detectan comportamientos realmente sospechosos
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    // Reactivamos la detección de pérdida de foco para detectar cambios entre aplicaciones
     window.addEventListener('blur', handleWindowBlur);
     window.addEventListener('focus', handleWindowFocus);
     // document.addEventListener('mouseleave', handleMouseLeave);
@@ -669,11 +682,14 @@ function EvaluationContent() {
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('copy', handleCopy);
     document.addEventListener('paste', handlePaste);
-    document.addEventListener('contextmenu', handleContextMenu);
-    document.addEventListener('selectstart', handleSelectStart);
+    // Eliminamos la detección de menú contextual para permitir su uso normal en la aplicación
+    // document.addEventListener('contextmenu', handleContextMenu);
+    // Eliminamos la detección de selección de texto para permitir su uso normal
+    // document.addEventListener('selectstart', handleSelectStart);
     document.addEventListener('dragstart', handleDragStart);
     window.addEventListener('beforeprint', handleBeforePrint);
-    navigator.mediaDevices?.addEventListener('devicechange', handleScreenCapture);
+    // Eliminamos la detección de captura de pantalla para evitar falsos positivos
+    // navigator.mediaDevices?.addEventListener('devicechange', handleScreenCapture);
 
     // Interceptar la API de compartir si está disponible
     const originalShare = navigator.share;
@@ -684,7 +700,7 @@ function EvaluationContent() {
       };
     }
 
-    // Limpiar todos los event listeners
+    // Limpiar todos los event listeners activos
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleWindowBlur);
@@ -696,11 +712,11 @@ function EvaluationContent() {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('copy', handleCopy);
       document.removeEventListener('paste', handlePaste);
-      document.removeEventListener('contextmenu', handleContextMenu);
-      document.removeEventListener('selectstart', handleSelectStart);
+      // document.removeEventListener('contextmenu', handleContextMenu);
+      // document.removeEventListener('selectstart', handleSelectStart);
       document.removeEventListener('dragstart', handleDragStart);
       window.removeEventListener('beforeprint', handleBeforePrint);
-      navigator.mediaDevices?.removeEventListener('devicechange', handleScreenCapture);
+      // navigator.mediaDevices?.removeEventListener('devicechange', handleScreenCapture);
 
       // Restaurar la API de compartir si fue modificada
       if (navigator.share && originalShare) {
@@ -903,7 +919,7 @@ function EvaluationContent() {
 
     if (!answer || !answer.answer.trim()) {
       return {
-        bgColor: 'bg-gray-300 dark:bg-gray-700 border border-gray-400 dark:border-gray-600',
+        bgColor: 'bg-muted border border-muted-foreground/30',
         tooltip: 'Sin responder',
         score: null
       }
@@ -911,7 +927,7 @@ function EvaluationContent() {
 
     if (!answer.evaluated) {
       return {
-        bgColor: 'bg-amber-400 dark:bg-amber-600 border border-amber-500 dark:border-amber-700 animate-pulse',
+        bgColor: 'bg-amber-400 dark:bg-amber-600 border border-amber-500/50 dark:border-amber-700/50 animate-pulse',
         tooltip: 'Respondida pero no evaluada',
         score: null
       }
@@ -921,19 +937,19 @@ function EvaluationContent() {
     if (answer.score !== null && answer.score !== undefined) {
       if (answer.score >= 4 && answer.score <= 5) {
         return {
-          bgColor: 'bg-emerald-500 dark:bg-emerald-600 border border-emerald-600 dark:border-emerald-700',
+          bgColor: 'bg-emerald-500 dark:bg-emerald-600 border border-emerald-600/50 dark:border-emerald-700/50',
           tooltip: 'Correcta',
           score: answer.score
         }
       } else if (answer.score >= 3 && answer.score < 4) {
         return {
-          bgColor: 'bg-amber-500 dark:bg-amber-600 border border-amber-600 dark:border-amber-700',
+          bgColor: 'bg-amber-500 dark:bg-amber-600 border border-amber-600/50 dark:border-amber-700/50',
           tooltip: 'Aceptable',
           score: answer.score
         }
       } else {
         return {
-          bgColor: 'bg-red-600 dark:bg-red-700 border border-red-700 dark:border-red-800',
+          bgColor: 'bg-red-500 dark:bg-red-600 border border-red-600/50 dark:border-red-700/50',
           tooltip: 'Necesita mejoras',
           score: answer.score
         }
@@ -941,7 +957,7 @@ function EvaluationContent() {
     }
 
     return {
-      bgColor: 'bg-rose-500 dark:bg-rose-600 border border-rose-600 dark:border-rose-700',
+      bgColor: 'bg-rose-500 dark:bg-rose-600 border border-rose-600/50 dark:border-rose-700/50',
       tooltip: 'Necesita mejoras',
       score: null
     }
@@ -1124,14 +1140,72 @@ function EvaluationContent() {
 
             {/* Alerta de intentos de fraude y tiempo fuera */}
             {(fraudAttempts > 0 || timeOutsideEval > 0) && (
-              <div className="flex items-center h-9 gap-1 bg-red-700 px-3 rounded-md flex-grow md:flex-grow-0">
-                <AlertTriangle className="h-4 w-4 text-white flex-shrink-0" />
-                <span className="text-white text-xs sm:text-sm font-medium truncate">
-                  {fraudAttempts > 0 && `Intentos: ${fraudAttempts}`}
-                  {fraudAttempts > 0 && timeOutsideEval > 0 && " | "}
-                  {timeOutsideEval > 0 && `Fuera: ${Math.floor(timeOutsideEval / 60)}m ${timeOutsideEval % 60}s`}
-                </span>
-              </div>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center h-auto py-1.5 gap-2 bg-gradient-to-r from-orange-600 to-red-600 px-3 rounded-lg flex-grow md:flex-grow-0 shadow-lg border border-red-400/30 cursor-help">
+                    <div className="bg-white/20 p-1 rounded-full">
+                      <AlertTriangle className="h-3.5 w-3.5 text-white flex-shrink-0" />
+                    </div>
+                    <div className="flex flex-row gap-3 items-center">
+                      {fraudAttempts > 0 && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex items-center gap-1.5 cursor-help">
+                              <div className="bg-white/20 h-5 w-5 rounded-full flex items-center justify-center">
+                                <span className="text-white text-xs font-bold">{fraudAttempts}</span>
+                              </div>
+                              <span className="text-white text-xs font-medium">fraudes</span>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-[300px] bg-slate-900 text-white">
+                            <div className="space-y-2">
+                              <p className="font-bold">Intentos de fraude detectados:</p>
+                              <ul className="list-disc pl-4 text-xs space-y-1">
+                                <li>Cambio de pestaña durante la evaluación</li>
+                                <li>Pérdida de foco de la ventana del navegador</li>
+                                <li>Uso de teclas sospechosas (Ctrl+C, Ctrl+V, etc.)</li>
+                                <li>Intento de copiar o pegar contenido</li>
+                                <li>Intento de captura de pantalla</li>
+                                <li>Uso del menú contextual (clic derecho)</li>
+                                <li>Selección de texto para copiar</li>
+                                <li>Intento de imprimir o compartir contenido</li>
+                              </ul>
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                      
+                      {fraudAttempts > 0 && timeOutsideEval > 0 && (
+                        <div className="h-4 w-px bg-white/30"></div>
+                      )}
+                      
+                      {timeOutsideEval > 0 && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex items-center gap-1.5 cursor-help">
+                              <div className="bg-white/20 h-5 w-5 rounded-full flex items-center justify-center">
+                                <span className="text-white text-xs font-bold">{Math.floor(timeOutsideEval / 60)}</span>
+                              </div>
+                              <span className="text-white text-xs font-medium">min</span>
+                              <div className="bg-white/20 h-5 w-5 rounded-full flex items-center justify-center">
+                                <span className="text-white text-xs font-bold">{timeOutsideEval % 60}</span>
+                              </div>
+                              <span className="text-white text-xs font-medium">seg</span>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-[250px] bg-slate-900 text-white">
+                            <p>Tiempo total fuera de la evaluación</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-[300px] bg-slate-900 text-white">
+                  <p className="font-bold">Alerta de seguridad</p>
+                  <p className="text-xs">Se han detectado comportamientos sospechosos durante la evaluación. Estos incidentes quedan registrados y pueden afectar la validez de tu evaluación.</p>
+                </TooltipContent>
+              </Tooltip>
             )}
           </div>
 
@@ -1400,7 +1474,7 @@ function EvaluationContent() {
                           aria-label={`Pregunta ${index + 1}: ${statusStyle.tooltip}`}
                         >
                           {/* Círculo interno (número de pregunta) */}
-                          <div className={`absolute inset-1 flex items-center justify-center rounded-full ${currentQuestionIndex === index ? 'bg-primary text-primary-foreground font-medium' : 'bg-blue-600 text-white'} transition-colors duration-200 ease-in-out`}>
+                          <div className={`absolute inset-1 flex items-center justify-center rounded-full ${currentQuestionIndex === index ? 'bg-primary text-primary-foreground font-medium' : 'bg-secondary text-secondary-foreground'} transition-colors duration-200 ease-in-out`}>
                             <span className="text-xs font-semibold">{index + 1}</span>
                           </div>
                         </button>
@@ -1526,6 +1600,15 @@ function EvaluationContent() {
           </AlertDialogContent>
         </AlertDialog>
       )}
+
+      {/* Modal de reflexión sobre fraude */}
+      <FraudReflectionModal
+        isOpen={isFraudModalOpen}
+        onClose={() => setIsFraudModalOpen(false)}
+        fraudType={currentFraudType}
+        fraudCount={fraudAttempts}
+        fraudMessage={currentFraudMessage}
+      />
     </div>
   )
 }

@@ -61,14 +61,14 @@ export async function getAttemptByUniqueCode(uniqueCode: string, email?: string)
     }
 
     // Verificar si el intento está dentro del tiempo permitido
-    // const now = new Date();
-    // if (now < attempt.startTime) {
-    //   return { success: false, error: 'La evaluación aún no ha comenzado' };
-    // }
+    const now = new Date();
+    if (now < attempt.startTime) {
+      return { success: false, error: 'La evaluación aún no ha comenzado' };
+    }
 
-    // if (now > attempt.endTime) {
-    //   return { success: false, error: 'La evaluación ya ha finalizado' };
-    // }
+    if (now > attempt.endTime) {
+      return { success: false, error: 'La evaluación ya ha finalizado' };
+    }
 
     // Asegurarse de que todos los campos necesarios estén incluidos en la respuesta
     // Especialmente el campo helpUrl que es requerido por el componente
@@ -449,6 +449,10 @@ export async function submitEvaluation(submissionId: number) {
     };
   } catch (error) {
     console.error('Error al enviar la evaluación:', error);
-    return { success: false, error: 'Error al enviar la evaluación' };
+    // Improve error serialization
+    const errorMessage = error instanceof Error 
+      ? error.message 
+      : 'Error desconocido al enviar la evaluación';
+    return { success: false, error: errorMessage };
   }
 }

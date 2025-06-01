@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Outfit, Montserrat, Roboto, Fira_Code, Ubuntu_Mono, Playfair_Display, Architects_Daughter, Merriweather } from "next/font/google";
 import "./globals.css";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme/theme-provider";
 
+// Fuentes predeterminadas
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -12,6 +13,54 @@ const geistSans = Geist({
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+// Fuentes para el tema Purple
+const outfitFont = Outfit({
+  variable: "--font-outfit",
+  subsets: ["latin"],
+});
+
+const firaCodeFont = Fira_Code({
+  variable: "--font-fira-code",
+  subsets: ["latin"],
+});
+
+// Fuentes para el tema Amber
+const montserratFont = Montserrat({
+  variable: "--font-montserrat",
+  subsets: ["latin"],
+});
+
+const ubuntuMonoFont = Ubuntu_Mono({
+  variable: "--font-ubuntu-mono",
+  weight: ["400", "700"],
+  subsets: ["latin"],
+});
+
+const merriweatherFont = Merriweather({
+  variable: "--font-merriweather",
+  weight: ["400", "700"],
+  subsets: ["latin"],
+});
+
+// Fuentes para el tema Bold Tech
+const robotoFont = Roboto({
+  variable: "--font-roboto",
+  weight: ["400", "700"],
+  subsets: ["latin"],
+});
+
+const playfairDisplayFont = Playfair_Display({
+  variable: "--font-playfair-display",
+  subsets: ["latin"],
+});
+
+// Fuentes para el tema Notebook
+const architectsDaughterFont = Architects_Daughter({
+  variable: "--font-architects-daughter",
+  weight: ["400"],
   subsets: ["latin"],
 });
 
@@ -26,7 +75,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`
+      ${geistSans.variable} 
+      ${geistMono.variable} 
+      ${outfitFont.variable} 
+      ${firaCodeFont.variable} 
+      ${montserratFont.variable} 
+      ${ubuntuMonoFont.variable}
+      ${merriweatherFont.variable}
+      ${robotoFont.variable}
+      ${playfairDisplayFont.variable}
+      ${architectsDaughterFont.variable}
+    `}>
       <body>
         <ThemeProvider
           attribute="class"

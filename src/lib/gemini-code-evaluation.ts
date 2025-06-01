@@ -29,8 +29,7 @@ export async function evaluateStudentCode(
       };
     }
 
-    // Inicializar la API de Google Gemini
-    // NOTA: En producción, esta clave debe estar en variables de entorno
+    // Inicializar la API de Google Gemini   
     const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
     if (!API_KEY) {
       console.error('API_KEY no configurada para Google Gemini');
@@ -42,7 +41,7 @@ export async function evaluateStudentCode(
 
     const genAI = new GoogleGenAI({ apiKey: API_KEY });
     
-    // Usar el modelo gemini-2.0-flash para evaluaciones más rápidas
+    // Usar el modelo gemini-2.0-flash 
     const model = "gemini-2.0-flash";
 
     // Crear el prompt para la evaluación
