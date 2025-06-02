@@ -265,9 +265,9 @@ function EvaluationContent() {
         }
 
         // Verificar si la evaluación está dentro del rango de tiempo permitido
-        const now = new Date()
-        const startTime = new Date(attempt.startTime)
-        const endTime = new Date(attempt.endTime)
+        // const now = new Date()
+        // const startTime = new Date(attempt.startTime)
+        // const endTime = new Date(attempt.endTime)
 
         // if (now < startTime || now > endTime) {
         //   // La evaluación está fuera del rango de tiempo permitido
