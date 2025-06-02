@@ -1,0 +1,10 @@
+{
+  "env": {
+    "TZ": "America/Bogota"
+  },
+  "build": {
+    "env": {
+      "TZ": "America/Bogota"
+    }
+  }
+}
