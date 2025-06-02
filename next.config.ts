@@ -1,12 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  experimental: {    
-    serverComponentsExternalPackages: ['@prisma/client'],
-  },
-  env: {
-    TZ: 'UTC', // Configurar zona horaria UTC para manejo correcto de fechas
-  },
+  /* config options here */
 };
 
 export default nextConfig;

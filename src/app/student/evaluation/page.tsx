@@ -269,12 +269,12 @@ function EvaluationContent() {
         const startTime = new Date(attempt.startTime)
         const endTime = new Date(attempt.endTime)
 
-        if (now < startTime || now > endTime) {
-          // La evaluación está fuera del rango de tiempo permitido
-          setIsEvaluationExpired(true)
-          setLoading(false)
-          return
-        }
+        // if (now < startTime || now > endTime) {
+        //   // La evaluación está fuera del rango de tiempo permitido
+        //   setIsEvaluationExpired(true)
+        //   setLoading(false)
+        //   return
+        // }
 
         // Crear una nueva presentación para este estudiante
         const submissionResult = await createSubmission(attempt.id, email, firstName, lastName)
